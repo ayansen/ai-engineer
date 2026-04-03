@@ -580,7 +580,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: \${{ env.PYTHON_VERSION }}
+          python-version: \u0024{{ env.PYTHON_VERSION }}
           cache: pip
 
       - run: pip install -r requirements-dev.txt
@@ -602,7 +602,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: \${{ env.PYTHON_VERSION }}
+          python-version: \u0024{{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -r requirements.txt
       - name: Integration tests (mocked LLM)
@@ -617,12 +617,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: \${{ env.PYTHON_VERSION }}
+          python-version: \u0024{{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -r requirements.txt
       - name: Run evaluation suite
         env:
-          OPENAI_API_KEY: \${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEY: \u0024{{ secrets.OPENAI_API_KEY }}
         run: pytest tests/eval/ -v --tb=short
       - name: Upload eval results
         uses: actions/upload-artifact@v4
@@ -638,14 +638,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker build -t app:\${{ github.sha }} .
+        run: docker build -t app:\u0024{{ github.sha }} .
       - name: Push to registry
         run: |
-          echo \${{ secrets.REGISTRY_PASSWORD }} | docker login -u \${{ secrets.REGISTRY_USER }} --password-stdin registry.example.com
-          docker tag app:\${{ github.sha }} registry.example.com/app:\${{ github.sha }}
-          docker push registry.example.com/app:\${{ github.sha }}
+          echo \u0024{{ secrets.REGISTRY_PASSWORD }} | docker login -u \u0024{{ secrets.REGISTRY_USER }} --password-stdin registry.example.com
+          docker tag app:\u0024{{ github.sha }} registry.example.com/app:\u0024{{ github.sha }}
+          docker push registry.example.com/app:\u0024{{ github.sha }}
       - name: Deploy to staging
-        run: kubectl set image deployment/app app=registry.example.com/app:\${{ github.sha }} -n staging
+        run: kubectl set image deployment/app app=registry.example.com/app:\u0024{{ github.sha }} -n staging
 \`\`\`
 
 ## Model Versioning

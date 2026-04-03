@@ -705,7 +705,7 @@ response = client.chat.completions.create(
 )
 
 # 4. Log token usage for monitoring
-print(f"Cost estimate: \${response.usage.total_tokens / 1000 * 0.005:.4f}")
+print(f"Cost estimate: \u0024{response.usage.total_tokens / 1000 * 0.005:.4f}")
 \`\`\`
 
 ---

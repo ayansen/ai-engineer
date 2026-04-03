@@ -696,11 +696,11 @@ Or via the command palette (\`Cmd+Shift+P\`): **Python: Select Interpreter** →
 \`\`\`json
 {
   "editor.formatOnSave": true,
-  "python.defaultInterpreterPath": "\${workspaceFolder}/.venv/bin/python",
+  "python.defaultInterpreterPath": "\u0024{workspaceFolder}/.venv/bin/python",
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff"
   },
-  "jupyter.notebookFileRoot": "\${workspaceFolder}"
+  "jupyter.notebookFileRoot": "\u0024{workspaceFolder}"
 }
 \`\`\`
 
