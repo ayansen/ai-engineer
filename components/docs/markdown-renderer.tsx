@@ -1,8 +1,36 @@
 "use client"
 
-import type * as React from "react"
+import * as React from "react"
 import { CodeBlock } from "./code-block"
 import { Callout } from "./callout"
+
+function MermaidDiagram({ chart }: { chart: string }) {
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [svg, setSvg] = React.useState<string>("")
+
+  React.useEffect(() => {
+    let cancelled = false
+    import("mermaid").then((mod) => {
+      const mermaid = mod.default
+      mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose" })
+      const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`
+      mermaid.render(id, chart).then(({ svg: rendered }) => {
+        if (!cancelled) setSvg(rendered)
+      }).catch(() => {
+        if (!cancelled) setSvg(`<pre style="color:red">Failed to render diagram</pre>`)
+      })
+    })
+    return () => { cancelled = true }
+  }, [chart])
+
+  return (
+    <div
+      ref={containerRef}
+      className="my-6 flex justify-center overflow-x-auto rounded-lg border border-border bg-muted/30 p-4"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  )
+}
 
 interface MarkdownRendererProps {
   content: string
@@ -31,6 +59,19 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
             {contentLines.join("\n").trim()}
           </Callout>,
         )
+        i++
+        continue
+      }
+
+      // Mermaid diagrams
+      if (line.startsWith("```mermaid")) {
+        const codeLines: string[] = []
+        i++
+        while (i < lines.length && !lines[i].startsWith("```")) {
+          codeLines.push(lines[i])
+          i++
+        }
+        elements.push(<MermaidDiagram key={`mermaid-${i}`} chart={codeLines.join("\n")} />)
         i++
         continue
       }
