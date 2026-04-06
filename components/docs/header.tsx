@@ -44,14 +44,14 @@ export function DocsHeader() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-6 text-sm">
-          <Link href="/docs/getting-started/overview" className="text-muted-foreground hover:text-foreground transition-colors">
+          <Link href="/docs/raise-the-bar/overview" className="text-muted-foreground hover:text-foreground transition-colors">
             Docs
           </Link>
-          <Link href="/docs/getting-started/roadmap" className="text-muted-foreground hover:text-foreground transition-colors">
-            Roadmap
+          <Link href="/docs/building-agents/overview" className="text-muted-foreground hover:text-foreground transition-colors">
+            Agents
           </Link>
-          <Link href="/docs/projects/overview" className="text-muted-foreground hover:text-foreground transition-colors">
-            Projects
+          <Link href="/docs/references/reading-list" className="text-muted-foreground hover:text-foreground transition-colors">
+            References
           </Link>
         </nav>
 

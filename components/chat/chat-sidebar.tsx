@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Send, Settings, Bot, User, Loader2, X, Zap, ChevronRight } from "lucide-react"
+import { Send, Settings, Bot, User, Loader2, X, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useDocContext } from "@/components/docs/doc-context"
 
 interface Message {
   id: string
@@ -50,8 +51,8 @@ function ApiKeyDialog({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+      <p className="text-xs text-muted-foreground">
         Enter your{" "}
         <a
           href="https://openrouter.ai/keys"
@@ -61,17 +62,17 @@ function ApiKeyDialog({
         >
           OpenRouter API key
         </a>{" "}
-        to start chatting. It's stored only in your browser.
+        to start chatting.
       </p>
       <input
         type="password"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="sk-or-..."
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         autoFocus
       />
-      <Button type="submit" disabled={!value.trim()}>
+      <Button type="submit" disabled={!value.trim()} size="sm">
         Save Key
       </Button>
     </form>
@@ -82,20 +83,20 @@ function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user"
 
   return (
-    <div className={cn("flex gap-3 max-w-3xl", isUser && "ml-auto flex-row-reverse")}>
+    <div className={cn("flex gap-2 max-w-full", isUser && "ml-auto flex-row-reverse")}>
       <div
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border",
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px]",
           isUser
             ? "bg-primary text-primary-foreground border-primary"
             : "bg-muted text-muted-foreground border-border",
         )}
       >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+        {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
       </div>
       <div
         className={cn(
-          "rounded-2xl px-4 py-3 text-sm leading-relaxed max-w-[85%]",
+          "rounded-lg px-3 py-2 text-xs leading-relaxed max-w-[85%]",
           isUser
             ? "bg-primary text-primary-foreground rounded-tr-sm"
             : "bg-muted text-foreground rounded-tl-sm",
@@ -118,9 +119,9 @@ function renderMessageContent(content: string): React.ReactNode {
       return (
         <pre
           key={i}
-          className="mt-2 mb-2 overflow-x-auto rounded-lg bg-background/50 border border-border p-3 text-xs font-mono"
+          className="mt-1 mb-1 overflow-x-auto rounded bg-background/50 border border-border p-2 text-[10px] font-mono"
         >
-          {lang && <div className="text-muted-foreground text-[10px] mb-1 uppercase">{lang}</div>}
+          {lang && <div className="text-muted-foreground text-[8px] mb-1 uppercase">{lang}</div>}
           <code>{code.trim()}</code>
         </pre>
       )
@@ -134,7 +135,7 @@ function renderMessageContent(content: string): React.ReactNode {
             .map((seg, k) => {
               if (seg.startsWith("`") && seg.endsWith("`"))
                 return (
-                  <code key={k} className="rounded bg-background/50 px-1 py-0.5 font-mono text-xs">
+                  <code key={k} className="rounded bg-background/50 px-1 py-0.5 font-mono text-[10px]">
                     {seg.slice(1, -1)}
                   </code>
                 )
@@ -154,7 +155,7 @@ function renderMessageContent(content: string): React.ReactNode {
   })
 }
 
-export function ChatInterface() {
+export function ChatSidebar() {
   const [messages, setMessages] = React.useState<Message[]>([])
   const [input, setInput] = React.useState("")
   const [isLoading, setIsLoading] = React.useState(false)
@@ -162,6 +163,19 @@ export function ChatInterface() {
   const [showSettings, setShowSettings] = React.useState(false)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
+  const { doc } = useDocContext()
+
+  const systemPrompt = React.useMemo(() => {
+    let prompt = SYSTEM_PROMPT
+    if (doc) {
+      prompt += `\n\nThe user is currently reading the following document.\n\n`
+      prompt += `**Document title:** ${doc.title}\n`
+      prompt += `**Description:** ${doc.description}\n\n`
+      prompt += `**Document content:**\n${doc.content}\n\n`
+      prompt += `Answer questions based on this document when relevant. Reference specific parts of the document in your answers.`
+    }
+    return prompt
+  }, [doc])
 
   React.useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) || ""
@@ -211,7 +225,7 @@ export function ChatInterface() {
           model: MODEL,
           stream: true,
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: systemPrompt },
             ...messages.map((m) => ({ role: m.role, content: m.content })),
             { role: "user", content },
           ],
@@ -272,48 +286,38 @@ export function ChatInterface() {
   const isEmpty = messages.length === 0
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-14 items-center px-4 md:px-6 gap-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-              <Zap className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-lg tracking-tight">Raise the bar!</span>
-          </div>
-
-          <div className="hidden md:flex items-center gap-1 ml-4 text-sm text-muted-foreground">
-            <ChevronRight className="h-3.5 w-3.5" />
-            <span>AI Engineering Session</span>
-          </div>
-
-          <div className="flex flex-1 items-center justify-end gap-2">
-            <span className="hidden sm:inline-flex text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-              {MODEL.split("/")[1]}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setShowSettings((v) => !v)}
-              aria-label="Settings"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-          </div>
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-semibold text-sm">Chat</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={() => setShowSettings((v) => !v)}
+            aria-label="Settings"
+          >
+            <Settings className="h-3 w-3" />
+          </Button>
         </div>
+        {doc && (
+          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground truncate">
+            <FileText className="h-3 w-3 shrink-0" />
+            <span className="truncate">{doc.title}</span>
+          </div>
+        )}
 
         {/* Settings panel */}
         {showSettings && (
-          <div className="border-t border-border bg-muted/50 px-4 md:px-6 py-4">
-            <div className="max-w-md flex items-start gap-3">
+          <div className="border-t border-border bg-muted/50 p-2 mt-2 rounded">
+            <div className="flex items-start gap-2">
               <div className="flex-1">
                 <ApiKeyDialog onSave={saveApiKey} initialKey={apiKey} />
               </div>
               {apiKey && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 mt-6 shrink-0" onClick={() => setShowSettings(false)}>
-                  <X className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => setShowSettings(false)}>
+                  <X className="h-3 w-3" />
                 </Button>
               )}
             </div>
@@ -324,54 +328,49 @@ export function ChatInterface() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {isEmpty ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 pb-32">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary mb-6">
-              <Zap className="h-7 w-7 text-primary-foreground" />
-            </div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-3 text-center">Raise the bar!</h1>
-            <p className="text-muted-foreground text-center max-w-md mb-10 leading-relaxed">
-              Ask anything about AI engineering — tokens, agents, RAG, prompt engineering,
-              or how to build AI-native applications.
+          <div className="flex flex-col items-center justify-center h-full px-3 pb-4 text-center">
+            <div className="text-sm font-medium mb-2">Ask about AI Engineering</div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Ask anything about tokens, agents, RAG, prompt engineering, or building AI-native applications.
             </p>
 
             {!apiKey && (
-              <div className="mb-8 p-4 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm max-w-md text-center">
-                Add your OpenRouter API key above to start chatting.
+              <div className="mb-3 p-2 rounded border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs">
+                Add your OpenRouter API key to start chatting.
               </div>
             )}
 
-            <div className="grid gap-2 w-full max-w-lg">
+            <div className="space-y-1 w-full">
               {SUGGESTED_QUESTIONS.map((q) => (
                 <button
                   key={q}
                   onClick={() => apiKey && sendMessage(q)}
                   disabled={!apiKey}
                   className={cn(
-                    "text-left px-4 py-3 rounded-xl border border-border bg-card text-sm transition-colors",
+                    "text-left w-full px-2 py-1 rounded text-xs border border-border bg-card transition-colors",
                     apiKey
                       ? "hover:bg-accent hover:border-foreground/20 cursor-pointer"
                       : "opacity-50 cursor-not-allowed",
                   )}
                 >
-                  <span className="text-muted-foreground mr-2">→</span>
                   {q}
                 </button>
               ))}
             </div>
           </div>
         ) : (
-          <div className="mx-auto max-w-3xl px-4 py-8 flex flex-col gap-6">
+          <div className="px-3 py-4 flex flex-col gap-3">
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
             {isLoading && messages[messages.length - 1]?.role === "assistant" && messages[messages.length - 1]?.content === "" && (
-              <div className="flex gap-3 max-w-3xl">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-muted text-muted-foreground border-border">
-                  <Bot className="h-4 w-4" />
+              <div className="flex gap-2 max-w-full">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-muted text-muted-foreground border-border">
+                  <Bot className="h-3 w-3" />
                 </div>
-                <div className="rounded-2xl rounded-tl-sm px-4 py-3 bg-muted flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Thinking…</span>
+                <div className="rounded bg-muted flex items-center gap-1 px-2 py-1">
+                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Thinking…</span>
                 </div>
               </div>
             )}
@@ -381,41 +380,33 @@ export function ChatInterface() {
       </div>
 
       {/* Input */}
-      <div className="sticky bottom-0 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-4">
-        <div className="mx-auto max-w-3xl flex gap-3 items-end">
+      <div className="border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-3 py-2">
+        <div className="flex gap-2 items-end">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={apiKey ? "Ask about AI engineering… (Enter to send, Shift+Enter for newline)" : "Add your API key to start"}
+            placeholder={apiKey ? "Ask… (Enter)" : "Add API key"}
             disabled={!apiKey || isLoading}
             rows={1}
-            className="flex-1 resize-none rounded-xl border border-input bg-muted px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 min-h-[48px] max-h-[200px] leading-relaxed"
+            className="flex-1 resize-none rounded border border-input bg-muted px-2 py-1 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 min-h-[32px] max-h-[100px] leading-relaxed"
             style={{ height: "auto" }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement
               target.style.height = "auto"
-              target.style.height = Math.min(target.scrollHeight, 200) + "px"
+              target.style.height = Math.min(target.scrollHeight, 100) + "px"
             }}
           />
           <Button
             onClick={() => sendMessage()}
             disabled={!input.trim() || !apiKey || isLoading}
             size="icon"
-            className="h-12 w-12 rounded-xl shrink-0"
+            className="h-8 w-8 rounded shrink-0"
           >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
           </Button>
         </div>
-        <p className="text-center text-xs text-muted-foreground mt-2">
-          Powered by{" "}
-          <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
-            OpenRouter
-          </a>
-          {" · "}
-          Your API key never leaves your browser
-        </p>
       </div>
     </div>
   )

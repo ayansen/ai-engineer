@@ -1,25 +1,21 @@
 export type { DocContent, DocsContentMap } from './types'
-import { gettingStartedContent } from './getting-started'
-import { foundationsContent } from './foundations'
-import { llmsContent } from './llms'
-import { ragContent } from './rag'
-import { agentsContent } from './agents'
-import { mlopsContent } from './mlops'
-import { projectsContent } from './projects'
-import { resourcesContent } from './resources'
+import { raiseTheBarContent } from './raise-the-bar'
+import { aiNativeContent } from './ai-native'
+import { codingAiEraContent } from './coding-ai-era'
+import { codeThreeContent } from './code-three'
+import { buildingAgentsContent } from './building-agents'
+import { referencesContent } from './references'
 import type { DocsContentMap } from './types'
 
-export { gettingStartedContent, foundationsContent, llmsContent, ragContent, agentsContent, mlopsContent, projectsContent, resourcesContent }
+export { raiseTheBarContent, aiNativeContent, codingAiEraContent, codeThreeContent, buildingAgentsContent, referencesContent }
 
 export const docsContent: DocsContentMap = {
-  ...gettingStartedContent,
-  ...foundationsContent,
-  ...llmsContent,
-  ...ragContent,
-  ...agentsContent,
-  ...mlopsContent,
-  ...projectsContent,
-  ...resourcesContent,
+  ...raiseTheBarContent,
+  ...aiNativeContent,
+  ...codingAiEraContent,
+  ...codeThreeContent,
+  ...buildingAgentsContent,
+  ...referencesContent,
 }
 
 export function getAllDocSlugs(): string[] {
