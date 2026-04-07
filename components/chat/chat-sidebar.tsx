@@ -81,16 +81,18 @@ type SpeechRecognitionInstance = any
 
 function useVoiceInput(onTranscript: (text: string) => void) {
   const [isListening, setIsListening] = React.useState(false)
-  const [isSupported] = React.useState(() =>
-    typeof window !== "undefined" &&
-    !!(window.SpeechRecognition || (window as /* eslint-disable-line @typescript-eslint/no-explicit-any */ any).webkitSpeechRecognition),
-  )
+  const [isSupported, setIsSupported] = React.useState(false)
   const callbackRef = React.useRef(onTranscript)
   callbackRef.current = onTranscript
 
-  // No useEffect — create a fresh instance each time start() is called
   const recognitionRef = React.useRef<SpeechRecognitionInstance>(null)
   const wantListeningRef = React.useRef(false)
+
+  React.useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any
+    setIsSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition))
+  }, [])
 
   const start = React.useCallback(() => {
     if (!isSupported || wantListeningRef.current) return
