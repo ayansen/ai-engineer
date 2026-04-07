@@ -59,9 +59,9 @@ Testing and measuring AI system quality.
 
 Thinking about AI as a product, not just a technology.
 
-- **[Why AI Native Matters](https://a16z.com/ai-native-apps/)** by Andreessen Horowitz — Analysis of what makes AI native products different and why they win.
+- **[Why AI Native Matters](https://a16z.com/ai-starts-with-product/)** by Andreessen Horowitz — Analysis of what makes AI native products different and why they win.
 
-- **[The AI-First Product Playbook](https://www.lennysnewsletter.com/p/how-to-build-ai-first-products)** by Lenny Rachitsky — Interviews with founders building AI native products, with concrete lessons.
+- **[The AI-First Product Playbook](https://www.lennysnewsletter.com/)** by Lenny Rachitsky — Interviews with founders building AI native products, with concrete lessons.
 
 - **[Generative AI Design Patterns](https://pair.withgoogle.com/guidebook/)** by Google PAIR — UX design patterns for AI products, covering uncertainty, trust, and user control.
 
