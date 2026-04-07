@@ -1,40 +1,184 @@
 "use client"
 
 import * as React from "react"
-import { Send, Settings, Bot, User, Loader2, X, FileText } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Send, Settings, Bot, User, Loader2, X, FileText, Navigation, Mic, MicOff, Volume2, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useDocContext } from "@/components/docs/doc-context"
+import { flattenNavItems, docsConfig } from "@/lib/docs-config"
 
 interface Message {
   id: string
-  role: "user" | "assistant"
+  role: "user" | "assistant" | "tool-action"
   content: string
 }
 
 const STORAGE_KEY = "openrouter_api_key"
 const MODEL = "google/gemini-2.0-flash-001"
 
+const NAV_PAGES = flattenNavItems(docsConfig)
+
+const TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "navigate_to_page",
+      description:
+        "Navigate the user to a specific documentation page. Use this when the user asks to go to, show, or open a page or topic. Available pages: " +
+        NAV_PAGES.map((p) => `"${p.title}" (${p.href})`).join(", "),
+      parameters: {
+        type: "object",
+        properties: {
+          href: {
+            type: "string",
+            description: "The href path to navigate to, e.g. /docs/references/reading-list",
+            enum: NAV_PAGES.map((p) => p.href),
+          },
+        },
+        required: ["href"],
+      },
+    },
+  },
+]
+
 const SYSTEM_PROMPT = `You are an expert AI engineering instructor for a session called "Raise the Bar!". 
 You help developers understand and adopt AI engineering practices.
 
-The session covers these 5 topics:
-1. The Art of Possible — Real-world AI applications and what's achievable today
-2. Building AI Native Applications — AI agents in everyday workflows: fixing Jira tickets, updating documentation, writing code, generating status reports
-3. Deep Dive: Coding in an AI Era — Prompt engineering, shifting from writing code to reviewing code, documenting functions so agents perform better, writing reusable skills for consistency and debugging
-4. Tokens, Context Windows & LLM Fundamentals — What tokens are, how context windows work, why this matters for cost and quality
-5. The Agent Loop — Relinquishing deterministic control to stochastic agents, understanding the risks and rewards
+You have access to a tool called navigate_to_page that lets you navigate the user to any documentation page.
+When the user asks to go to a page, see a topic, or navigate somewhere, use the tool.
+When answering questions, also answer with text — do not only navigate.
 
 Be concise, practical, and use concrete examples. When explaining code, use markdown code blocks.
 Encourage curiosity and hands-on experimentation.`
 
 const SUGGESTED_QUESTIONS = [
   "What makes an application truly AI-native?",
-  "How do tokens and context windows affect my AI app?",
-  "What's the agent loop and why should I care?",
-  "How do I write better prompts for consistent results?",
-  "Show me a real-world example of AI fixing a Jira ticket",
+  "Take me to the references page",
+  "What's the difference between agents and tools?",
+  "Show me the page about prompt engineering",
+  "How is coding changing with AI?",
 ]
+
+const AUTO_READ_KEY = "chat_auto_read"
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, " code block omitted ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*]\s+/gm, "")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .trim()
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SpeechRecognitionInstance = any
+
+function useVoiceInput(onTranscript: (text: string) => void) {
+  const [isListening, setIsListening] = React.useState(false)
+  const [isSupported, setIsSupported] = React.useState(false)
+  const callbackRef = React.useRef(onTranscript)
+  callbackRef.current = onTranscript
+
+  const recognitionRef = React.useRef<SpeechRecognitionInstance>(null)
+  const wantListeningRef = React.useRef(false)
+
+  React.useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any
+    setIsSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition))
+  }, [])
+
+  const start = React.useCallback(() => {
+    if (!isSupported || wantListeningRef.current) return
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any
+    const SpeechRecognition = w.SpeechRecognition || w.webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = "en-US"
+
+    recognition.onresult = (event: SpeechRecognitionInstance) => {
+      const last = event.results[event.results.length - 1]
+      callbackRef.current(last[0].transcript)
+    }
+
+    recognition.onerror = (event: SpeechRecognitionInstance) => {
+      const fatal = ["not-allowed", "service-not-allowed", "network"]
+      if (fatal.includes(event.error)) {
+        wantListeningRef.current = false
+        setIsListening(false)
+        recognitionRef.current = null
+      }
+      // non-fatal (no-speech, audio-capture) — ignore, onend will auto-restart
+    }
+
+    recognition.onend = () => {
+      if (wantListeningRef.current) {
+        try { recognition.start() } catch { /* ignore */ }
+      } else {
+        setIsListening(false)
+        recognitionRef.current = null
+      }
+    }
+
+    recognitionRef.current = recognition
+    wantListeningRef.current = true
+    setIsListening(true)
+    recognition.start()
+  }, [isSupported])
+
+  const stop = React.useCallback(() => {
+    wantListeningRef.current = false
+    setIsListening(false)
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort() } catch { /* ignore */ }
+      recognitionRef.current = null
+    }
+  }, [])
+
+  return { isListening, isSupported, start, stop }
+}
+
+function useVoiceOutput() {
+  const [isSpeaking, setIsSpeaking] = React.useState(false)
+  const [isSupported, setIsSupported] = React.useState(false)
+  const currentUtteranceRef = React.useRef<SpeechSynthesisUtterance | null>(null)
+
+  React.useEffect(() => {
+    setIsSupported(typeof window !== "undefined" && "speechSynthesis" in window)
+  }, [])
+
+  const speak = React.useCallback((text: string) => {
+    if (!("speechSynthesis" in window)) return
+    window.speechSynthesis.cancel()
+    const clean = stripMarkdown(text)
+    const utterance = new SpeechSynthesisUtterance(clean)
+    utterance.rate = 1.1
+    utterance.onend = () => { setIsSpeaking(false); currentUtteranceRef.current = null }
+    utterance.onerror = () => { setIsSpeaking(false); currentUtteranceRef.current = null }
+    currentUtteranceRef.current = utterance
+    setIsSpeaking(true)
+    window.speechSynthesis.speak(utterance)
+  }, [])
+
+  const stop = React.useCallback(() => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel()
+      setIsSpeaking(false)
+      currentUtteranceRef.current = null
+    }
+  }, [])
+
+  return { isSpeaking, isSupported, speak, stop }
+}
 
 function ApiKeyDialog({
   onSave,
@@ -79,11 +223,21 @@ function ApiKeyDialog({
   )
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message, voiceOutput }: { message: Message; voiceOutput?: ReturnType<typeof useVoiceOutput> }) {
+  if (message.role === "tool-action") {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-primary/10 border border-primary/20 text-xs text-primary">
+        <Navigation className="h-3 w-3 shrink-0" />
+        <span>{message.content}</span>
+      </div>
+    )
+  }
+
   const isUser = message.role === "user"
+  const isAssistant = message.role === "assistant"
 
   return (
-    <div className={cn("flex gap-2 max-w-full", isUser && "ml-auto flex-row-reverse")}>
+    <div className={cn("flex gap-2 max-w-full group", isUser && "ml-auto flex-row-reverse")}>
       <div
         className={cn(
           "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px]",
@@ -94,15 +248,32 @@ function MessageBubble({ message }: { message: Message }) {
       >
         {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
       </div>
-      <div
-        className={cn(
-          "rounded-lg px-3 py-2 text-xs leading-relaxed max-w-[85%]",
-          isUser
-            ? "bg-primary text-primary-foreground rounded-tr-sm"
-            : "bg-muted text-foreground rounded-tl-sm",
+      <div className="flex flex-col max-w-[85%]">
+        <div
+          className={cn(
+            "rounded-lg px-3 py-2 text-xs leading-relaxed",
+            isUser
+              ? "bg-primary text-primary-foreground rounded-tr-sm"
+              : "bg-muted text-foreground rounded-tl-sm",
+          )}
+        >
+          {renderMessageContent(message.content)}
+        </div>
+        {isAssistant && voiceOutput?.isSupported && (
+          <button
+            onClick={() =>
+              voiceOutput.isSpeaking ? voiceOutput.stop() : voiceOutput.speak(message.content)
+            }
+            className="self-start mt-0.5 p-0.5 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label={voiceOutput.isSpeaking ? "Stop reading" : "Read aloud"}
+          >
+            {voiceOutput.isSpeaking ? (
+              <VolumeX className="h-3 w-3" />
+            ) : (
+              <Volume2 className="h-3 w-3" />
+            )}
+          </button>
         )}
-      >
-        {renderMessageContent(message.content)}
       </div>
     </div>
   )
@@ -161,9 +332,19 @@ export function ChatSidebar() {
   const [isLoading, setIsLoading] = React.useState(false)
   const [apiKey, setApiKey] = React.useState<string>("")
   const [showSettings, setShowSettings] = React.useState(false)
+  const [autoRead, setAutoRead] = React.useState(false)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
   const { doc } = useDocContext()
+  const router = useRouter()
+
+  const voiceOutput = useVoiceOutput()
+
+  const onTranscript = React.useCallback((text: string) => {
+    setInput(text)
+  }, [])
+
+  const voiceInput = useVoiceInput(onTranscript)
 
   const systemPrompt = React.useMemo(() => {
     let prompt = SYSTEM_PROMPT
@@ -181,16 +362,36 @@ export function ChatSidebar() {
     const stored = localStorage.getItem(STORAGE_KEY) || ""
     setApiKey(stored)
     if (!stored) setShowSettings(true)
+    setAutoRead(localStorage.getItem(AUTO_READ_KEY) === "true")
   }, [])
 
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, isLoading])
 
+  // Auto-read new assistant messages
+  const prevMessageCountRef = React.useRef(0)
+  React.useEffect(() => {
+    if (autoRead && voiceOutput.isSupported && messages.length > prevMessageCountRef.current) {
+      const lastMsg = messages[messages.length - 1]
+      if (lastMsg?.role === "assistant" && lastMsg.content && !lastMsg.content.startsWith("⚠️")) {
+        voiceOutput.speak(lastMsg.content)
+      }
+    }
+    prevMessageCountRef.current = messages.length
+  }, [messages, autoRead, voiceOutput])
+
   const saveApiKey = (key: string) => {
     localStorage.setItem(STORAGE_KEY, key)
     setApiKey(key)
     setShowSettings(false)
+  }
+
+  const toggleAutoRead = () => {
+    const next = !autoRead
+    setAutoRead(next)
+    localStorage.setItem(AUTO_READ_KEY, String(next))
+    if (!next) voiceOutput.stop()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -200,83 +401,106 @@ export function ChatSidebar() {
     }
   }
 
+  const callLLM = async (llmMessages: Array<{ role: string; content?: string; tool_call_id?: string; name?: string }>) => {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": typeof window !== "undefined" ? window.location.origin : "",
+        "X-Title": "Raise the Bar - AI Engineer",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        tools: TOOLS,
+        messages: llmMessages,
+      }),
+    })
+
+    if (!response.ok) {
+      const err = await response.text()
+      throw new Error(`OpenRouter error ${response.status}: ${err}`)
+    }
+
+    return response.json()
+  }
+
   const sendMessage = async (text?: string) => {
     const content = (text ?? input).trim()
     if (!content || isLoading || !apiKey) return
 
     const userMessage: Message = { id: Date.now().toString(), role: "user", content }
-    const assistantId = (Date.now() + 1).toString()
-    const assistantMessage: Message = { id: assistantId, role: "assistant", content: "" }
-
-    setMessages((prev) => [...prev, userMessage, assistantMessage])
+    setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
 
+    // Build the LLM message history (only user/assistant, not tool-action UI messages)
+    const llmHistory = messages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .map((m) => ({ role: m.role, content: m.content }))
+
+    const llmMessages: Array<{ role: string; content?: string; tool_call_id?: string; name?: string }> = [
+      { role: "system", content: systemPrompt },
+      ...llmHistory,
+      { role: "user", content },
+    ]
+
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": typeof window !== "undefined" ? window.location.origin : "",
-          "X-Title": "Raise the Bar - AI Engineer",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          stream: true,
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...messages.map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content },
-          ],
-        }),
-      })
+      // Agent loop — keeps running while the model returns tool calls
+      let maxIterations = 5
+      while (maxIterations-- > 0) {
+        const data = await callLLM(llmMessages)
+        const choice = data.choices?.[0]
 
-      if (!response.ok) {
-        const err = await response.text()
-        throw new Error(`OpenRouter error ${response.status}: ${err}`)
-      }
+        // Handle tool calls
+        if (choice?.message?.tool_calls && choice.message.tool_calls.length > 0) {
+          // Add the assistant message with tool calls to history
+          llmMessages.push(choice.message)
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
+          for (const toolCall of choice.message.tool_calls) {
+            if (toolCall.function?.name === "navigate_to_page") {
+              const args = JSON.parse(toolCall.function.arguments)
+              const href = args.href
+              const page = NAV_PAGES.find((p) => p.href === href)
+              const pageName = page?.title || href
 
-      if (!reader) throw new Error("No response body")
+              // Show navigation action in chat
+              const actionId = Date.now().toString() + "-nav"
+              setMessages((prev) => [
+                ...prev,
+                { id: actionId, role: "tool-action", content: `Navigating to ${pageName}…` },
+              ])
 
-      let accumulated = ""
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+              // Execute navigation
+              router.push(href)
 
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split("\n")
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue
-          const data = line.slice(6).trim()
-          if (data === "[DONE]") continue
-          try {
-            const parsed = JSON.parse(data)
-            const delta = parsed.choices?.[0]?.delta?.content
-            if (delta) {
-              accumulated += delta
-              setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: accumulated } : m)),
-              )
+              // Add tool result to LLM history
+              llmMessages.push({
+                role: "tool",
+                tool_call_id: toolCall.id,
+                content: `Successfully navigated the user to "${pageName}" at ${href}.`,
+              })
             }
-          } catch {
-            // skip malformed chunks
           }
+          // Continue the loop so the model can produce a text response after tool use
+          continue
         }
+
+        // Handle text response
+        const textContent = choice?.message?.content || ""
+        if (textContent) {
+          const assistantId = Date.now().toString() + "-reply"
+          setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: textContent }])
+        }
+        break
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Something went wrong"
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? { ...m, content: `⚠️ ${errorMsg}\n\nCheck your API key in settings.` }
-            : m,
-        ),
-      )
+      const errId = Date.now().toString() + "-err"
+      setMessages((prev) => [
+        ...prev,
+        { id: errId, role: "assistant", content: `⚠️ ${errorMsg}\n\nCheck your API key in settings.` },
+      ])
     } finally {
       setIsLoading(false)
       inputRef.current?.focus()
@@ -321,6 +545,18 @@ export function ChatSidebar() {
                 </Button>
               )}
             </div>
+            {voiceOutput.isSupported && (
+              <label className="flex items-center gap-2 mt-2 pt-2 border-t border-border cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoRead}
+                  onChange={toggleAutoRead}
+                  className="rounded border-input h-3 w-3 accent-primary"
+                />
+                <span className="text-xs text-muted-foreground">Auto-read responses</span>
+                <Volume2 className="h-3 w-3 text-muted-foreground" />
+              </label>
+            )}
           </div>
         )}
       </header>
@@ -361,7 +597,7 @@ export function ChatSidebar() {
         ) : (
           <div className="px-3 py-4 flex flex-col gap-3">
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble key={message.id} message={message} voiceOutput={voiceOutput} />
             ))}
             {isLoading && messages[messages.length - 1]?.role === "assistant" && messages[messages.length - 1]?.content === "" && (
               <div className="flex gap-2 max-w-full">
@@ -387,10 +623,13 @@ export function ChatSidebar() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={apiKey ? "Ask… (Enter)" : "Add API key"}
+            placeholder={apiKey ? (voiceInput.isListening ? "Listening…" : "Ask… (Enter)") : "Add API key"}
             disabled={!apiKey || isLoading}
             rows={1}
-            className="flex-1 resize-none rounded border border-input bg-muted px-2 py-1 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 min-h-[32px] max-h-[100px] leading-relaxed"
+            className={cn(
+              "flex-1 resize-none rounded border border-input bg-muted px-2 py-1 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 min-h-[32px] max-h-[100px] leading-relaxed",
+              voiceInput.isListening && "ring-2 ring-red-500/50 border-red-500/50",
+            )}
             style={{ height: "auto" }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement
@@ -398,6 +637,18 @@ export function ChatSidebar() {
               target.style.height = Math.min(target.scrollHeight, 100) + "px"
             }}
           />
+          {voiceInput.isSupported && (
+            <Button
+              onClick={() => voiceInput.isListening ? voiceInput.stop() : voiceInput.start()}
+              disabled={!apiKey || isLoading}
+              variant={voiceInput.isListening ? "destructive" : "outline"}
+              size="icon"
+              className={cn("h-8 w-8 rounded shrink-0", voiceInput.isListening && "animate-pulse")}
+              aria-label={voiceInput.isListening ? "Stop listening" : "Voice input"}
+            >
+              {voiceInput.isListening ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
+            </Button>
+          )}
           <Button
             onClick={() => sendMessage()}
             disabled={!input.trim() || !apiKey || isLoading}
