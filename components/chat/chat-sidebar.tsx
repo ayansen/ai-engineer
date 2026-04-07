@@ -84,7 +84,10 @@ function useVoiceInput(onTranscript: (text: string) => void) {
   const [isSupported, setIsSupported] = React.useState(false)
   const recognitionRef = React.useRef<SpeechRecognitionInstance>(null)
   const wantListeningRef = React.useRef(false)
+  const callbackRef = React.useRef(onTranscript)
+  callbackRef.current = onTranscript
 
+  // Create recognition instance once on mount
   React.useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any
@@ -97,42 +100,51 @@ function useVoiceInput(onTranscript: (text: string) => void) {
     recognition.interimResults = true
     recognition.lang = "en-US"
 
-    recognition.onresult = (event: { results: { isFinal: boolean; 0: { transcript: string } }[] }) => {
+    recognition.onresult = (event: SpeechRecognitionInstance) => {
       const last = event.results[event.results.length - 1]
-      onTranscript(last[0].transcript)
+      callbackRef.current(last[0].transcript)
     }
 
-    recognition.onerror = () => {
-      wantListeningRef.current = false
-      setIsListening(false)
+    recognition.onerror = (event: SpeechRecognitionInstance) => {
+      // Only stop on fatal errors — ignore transient ones like no-speech
+      const fatal = ["not-allowed", "service-not-allowed", "network", "aborted"]
+      if (fatal.includes(event.error)) {
+        wantListeningRef.current = false
+        setIsListening(false)
+      }
     }
 
-    // Auto-restart if user hasn't explicitly stopped
     recognition.onend = () => {
       if (wantListeningRef.current) {
-        try { recognition.start() } catch { /* already started */ }
+        // Browser stopped on its own — restart
+        try { recognition.start() } catch { /* ignore */ }
       } else {
         setIsListening(false)
       }
     }
 
     recognitionRef.current = recognition
-  }, [onTranscript])
+
+    return () => {
+      wantListeningRef.current = false
+      recognition.stop()
+    }
+  }, []) // no deps — create once
 
   const start = React.useCallback(() => {
     if (recognitionRef.current && !wantListeningRef.current) {
       wantListeningRef.current = true
-      recognitionRef.current.start()
       setIsListening(true)
+      try { recognitionRef.current.start() } catch { /* already running */ }
     }
   }, [])
 
   const stop = React.useCallback(() => {
     wantListeningRef.current = false
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
-    }
     setIsListening(false)
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop() } catch { /* not running */ }
+    }
   }, [])
 
   return { isListening, isSupported, start, stop }
