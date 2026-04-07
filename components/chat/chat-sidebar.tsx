@@ -42,7 +42,7 @@ const TOOLS = [
   },
 ]
 
-const SYSTEM_PROMPT = `You are an expert AI engineering instructor for a session called "Raise the Bar!". 
+const SYSTEM_PROMPT = `You are an expert AI engineering instructor for a session called "Raise the Bar!", authored by Ayan. 
 You help developers understand and adopt AI engineering practices.
 
 You have access to a tool called navigate_to_page that lets you navigate the user to any documentation page.
@@ -61,6 +61,7 @@ const SUGGESTED_QUESTIONS = [
 ]
 
 const AUTO_READ_KEY = "chat_auto_read"
+const VOICE_MODE_KEY = "chat_voice_mode"
 
 function stripMarkdown(text: string): string {
   return text
@@ -79,14 +80,12 @@ function stripMarkdown(text: string): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SpeechRecognitionInstance = any
 
-function useVoiceInput(onTranscript: (text: string) => void) {
+function useVoiceInput() {
   const [isListening, setIsListening] = React.useState(false)
   const [isSupported, setIsSupported] = React.useState(false)
-  const callbackRef = React.useRef(onTranscript)
-  callbackRef.current = onTranscript
-
   const recognitionRef = React.useRef<SpeechRecognitionInstance>(null)
   const wantListeningRef = React.useRef(false)
+  const onResultRef = React.useRef<(transcript: string, isFinal: boolean) => void>(() => {})
 
   React.useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,46 +93,49 @@ function useVoiceInput(onTranscript: (text: string) => void) {
     setIsSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition))
   }, [])
 
-  const start = React.useCallback(() => {
-    if (!isSupported || wantListeningRef.current) return
+  const start = React.useCallback(
+    (onResult: (transcript: string, isFinal: boolean) => void) => {
+      if (!isSupported || wantListeningRef.current) return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any
+      const SR = w.SpeechRecognition || w.webkitSpeechRecognition
+      const recognition = new SR()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = "en-US"
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any
-    const SpeechRecognition = w.SpeechRecognition || w.webkitSpeechRecognition
-    const recognition = new SpeechRecognition()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = "en-US"
+      onResultRef.current = onResult
 
-    recognition.onresult = (event: SpeechRecognitionInstance) => {
-      const last = event.results[event.results.length - 1]
-      callbackRef.current(last[0].transcript)
-    }
-
-    recognition.onerror = (event: SpeechRecognitionInstance) => {
-      const fatal = ["not-allowed", "service-not-allowed", "network"]
-      if (fatal.includes(event.error)) {
-        wantListeningRef.current = false
-        setIsListening(false)
-        recognitionRef.current = null
+      recognition.onresult = (event: SpeechRecognitionInstance) => {
+        const last = event.results[event.results.length - 1]
+        onResultRef.current(last[0].transcript, last.isFinal)
       }
-      // non-fatal (no-speech, audio-capture) — ignore, onend will auto-restart
-    }
 
-    recognition.onend = () => {
-      if (wantListeningRef.current) {
-        try { recognition.start() } catch { /* ignore */ }
-      } else {
-        setIsListening(false)
-        recognitionRef.current = null
+      recognition.onerror = (event: SpeechRecognitionInstance) => {
+        const fatal = ["not-allowed", "service-not-allowed", "network"]
+        if (fatal.includes(event.error)) {
+          wantListeningRef.current = false
+          setIsListening(false)
+          recognitionRef.current = null
+        }
       }
-    }
 
-    recognitionRef.current = recognition
-    wantListeningRef.current = true
-    setIsListening(true)
-    recognition.start()
-  }, [isSupported])
+      recognition.onend = () => {
+        if (wantListeningRef.current) {
+          try { recognition.start() } catch { /* ignore */ }
+        } else {
+          setIsListening(false)
+          recognitionRef.current = null
+        }
+      }
+
+      recognitionRef.current = recognition
+      wantListeningRef.current = true
+      setIsListening(true)
+      recognition.start()
+    },
+    [isSupported],
+  )
 
   const stop = React.useCallback(() => {
     wantListeningRef.current = false
@@ -156,14 +158,14 @@ function useVoiceOutput() {
     setIsSupported(typeof window !== "undefined" && "speechSynthesis" in window)
   }, [])
 
-  const speak = React.useCallback((text: string) => {
+  const speak = React.useCallback((text: string, onEnd?: () => void) => {
     if (!("speechSynthesis" in window)) return
     window.speechSynthesis.cancel()
     const clean = stripMarkdown(text)
     const utterance = new SpeechSynthesisUtterance(clean)
     utterance.rate = 1.1
-    utterance.onend = () => { setIsSpeaking(false); currentUtteranceRef.current = null }
-    utterance.onerror = () => { setIsSpeaking(false); currentUtteranceRef.current = null }
+    utterance.onend = () => { setIsSpeaking(false); currentUtteranceRef.current = null; onEnd?.() }
+    utterance.onerror = () => { setIsSpeaking(false); currentUtteranceRef.current = null; onEnd?.() }
     currentUtteranceRef.current = utterance
     setIsSpeaking(true)
     window.speechSynthesis.speak(utterance)
@@ -333,18 +335,35 @@ export function ChatSidebar() {
   const [apiKey, setApiKey] = React.useState<string>("")
   const [showSettings, setShowSettings] = React.useState(false)
   const [autoRead, setAutoRead] = React.useState(false)
+  const [voiceMode, setVoiceMode] = React.useState(false)
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
   const { doc } = useDocContext()
   const router = useRouter()
 
   const voiceOutput = useVoiceOutput()
+  const voiceInput = useVoiceInput()
 
-  const onTranscript = React.useCallback((text: string) => {
-    setInput(text)
-  }, [])
+  // Ref so the voice input callback can call sendMessage without stale closures
+  const sendRef = React.useRef<(text: string) => void>(() => {})
+  const voiceModeRef = React.useRef(false)
+  voiceModeRef.current = voiceMode
 
-  const voiceInput = useVoiceInput(onTranscript)
+  const startListeningForVoiceMode = React.useCallback(() => {
+    voiceInput.start((transcript: string, isFinal: boolean) => {
+      setInput(transcript)
+      if (isFinal && voiceModeRef.current) {
+        setInput("")
+        sendRef.current(transcript)
+      }
+    })
+  }, [voiceInput])
+
+  const startManualListening = React.useCallback(() => {
+    voiceInput.start((transcript: string) => {
+      setInput(transcript)
+    })
+  }, [voiceInput])
 
   const systemPrompt = React.useMemo(() => {
     let prompt = SYSTEM_PROMPT
@@ -363,23 +382,24 @@ export function ChatSidebar() {
     setApiKey(stored)
     if (!stored) setShowSettings(true)
     setAutoRead(localStorage.getItem(AUTO_READ_KEY) === "true")
+    setVoiceMode(localStorage.getItem(VOICE_MODE_KEY) === "true")
   }, [])
 
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, isLoading])
 
-  // Auto-read new assistant messages
+  // Auto-read new assistant messages when autoRead is on (but not voice mode — voice mode handles its own loop)
   const prevMessageCountRef = React.useRef(0)
   React.useEffect(() => {
-    if (autoRead && voiceOutput.isSupported && messages.length > prevMessageCountRef.current) {
+    if (!voiceMode && autoRead && voiceOutput.isSupported && messages.length > prevMessageCountRef.current) {
       const lastMsg = messages[messages.length - 1]
       if (lastMsg?.role === "assistant" && lastMsg.content && !lastMsg.content.startsWith("⚠️")) {
         voiceOutput.speak(lastMsg.content)
       }
     }
     prevMessageCountRef.current = messages.length
-  }, [messages, autoRead, voiceOutput])
+  }, [messages, autoRead, voiceMode, voiceOutput])
 
   const saveApiKey = (key: string) => {
     localStorage.setItem(STORAGE_KEY, key)
@@ -392,6 +412,20 @@ export function ChatSidebar() {
     setAutoRead(next)
     localStorage.setItem(AUTO_READ_KEY, String(next))
     if (!next) voiceOutput.stop()
+  }
+
+  const toggleVoiceMode = () => {
+    const next = !voiceMode
+    setVoiceMode(next)
+    localStorage.setItem(VOICE_MODE_KEY, String(next))
+    if (next) {
+      // Turn on: start listening immediately
+      startListeningForVoiceMode()
+    } else {
+      // Turn off: stop everything
+      voiceInput.stop()
+      voiceOutput.stop()
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -429,12 +463,14 @@ export function ChatSidebar() {
     const content = (text ?? input).trim()
     if (!content || isLoading || !apiKey) return
 
+    // Stop listening while we process (voice mode will restart after TTS)
+    voiceInput.stop()
+
     const userMessage: Message = { id: Date.now().toString(), role: "user", content }
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsLoading(true)
 
-    // Build the LLM message history (only user/assistant, not tool-action UI messages)
     const llmHistory = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role, content: m.content }))
@@ -445,16 +481,15 @@ export function ChatSidebar() {
       { role: "user", content },
     ]
 
+    let finalResponse = ""
+
     try {
-      // Agent loop — keeps running while the model returns tool calls
       let maxIterations = 5
       while (maxIterations-- > 0) {
         const data = await callLLM(llmMessages)
         const choice = data.choices?.[0]
 
-        // Handle tool calls
         if (choice?.message?.tool_calls && choice.message.tool_calls.length > 0) {
-          // Add the assistant message with tool calls to history
           llmMessages.push(choice.message)
 
           for (const toolCall of choice.message.tool_calls) {
@@ -464,17 +499,14 @@ export function ChatSidebar() {
               const page = NAV_PAGES.find((p) => p.href === href)
               const pageName = page?.title || href
 
-              // Show navigation action in chat
               const actionId = Date.now().toString() + "-nav"
               setMessages((prev) => [
                 ...prev,
                 { id: actionId, role: "tool-action", content: `Navigating to ${pageName}…` },
               ])
 
-              // Execute navigation
               router.push(href)
 
-              // Add tool result to LLM history
               llmMessages.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
@@ -482,13 +514,12 @@ export function ChatSidebar() {
               })
             }
           }
-          // Continue the loop so the model can produce a text response after tool use
           continue
         }
 
-        // Handle text response
         const textContent = choice?.message?.content || ""
         if (textContent) {
+          finalResponse = textContent
           const assistantId = Date.now().toString() + "-reply"
           setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: textContent }])
         }
@@ -503,11 +534,28 @@ export function ChatSidebar() {
       ])
     } finally {
       setIsLoading(false)
-      inputRef.current?.focus()
+
+      // Voice mode loop: read response aloud, then re-start listening
+      if (voiceModeRef.current && finalResponse && !finalResponse.startsWith("⚠️")) {
+        voiceOutput.speak(finalResponse, () => {
+          if (voiceModeRef.current) {
+            startListeningForVoiceMode()
+          }
+        })
+      } else if (voiceModeRef.current) {
+        // No response to read — just re-start listening
+        startListeningForVoiceMode()
+      } else {
+        inputRef.current?.focus()
+      }
     }
   }
 
+  // Keep sendRef in sync so voice input callback can call sendMessage
+  sendRef.current = sendMessage
+
   const isEmpty = messages.length === 0
+  const voiceAvailable = voiceInput.isSupported && voiceOutput.isSupported
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -515,17 +563,38 @@ export function ChatSidebar() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <span className="font-semibold text-sm">Chat</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={() => setShowSettings((v) => !v)}
-            aria-label="Settings"
-          >
-            <Settings className="h-3 w-3" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {voiceAvailable && (
+              <Button
+                variant={voiceMode ? "default" : "ghost"}
+                size="icon"
+                className={cn("h-6 w-6", voiceMode && "bg-red-500 hover:bg-red-600 text-white")}
+                onClick={toggleVoiceMode}
+                disabled={!apiKey}
+                aria-label={voiceMode ? "Disable voice mode" : "Enable voice mode"}
+                title={voiceMode ? "Voice mode ON — click to disable" : "Voice mode — auto listen & speak"}
+              >
+                {voiceMode ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setShowSettings((v) => !v)}
+              aria-label="Settings"
+            >
+              <Settings className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
-        {doc && (
+        {voiceMode && (
+          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-red-500 font-medium">
+            <Mic className={cn("h-3 w-3", voiceInput.isListening && "animate-pulse")} />
+            <span>{voiceInput.isListening ? "Listening…" : voiceOutput.isSpeaking ? "Speaking…" : "Voice mode"}</span>
+          </div>
+        )}
+        {doc && !voiceMode && (
           <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground truncate">
             <FileText className="h-3 w-3 shrink-0" />
             <span className="truncate">{doc.title}</span>
@@ -599,7 +668,7 @@ export function ChatSidebar() {
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} voiceOutput={voiceOutput} />
             ))}
-            {isLoading && messages[messages.length - 1]?.role === "assistant" && messages[messages.length - 1]?.content === "" && (
+            {isLoading && (
               <div className="flex gap-2 max-w-full">
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border bg-muted text-muted-foreground border-border">
                   <Bot className="h-3 w-3" />
@@ -637,9 +706,9 @@ export function ChatSidebar() {
               target.style.height = Math.min(target.scrollHeight, 100) + "px"
             }}
           />
-          {voiceInput.isSupported && (
+          {voiceInput.isSupported && !voiceMode && (
             <Button
-              onClick={() => voiceInput.isListening ? voiceInput.stop() : voiceInput.start()}
+              onClick={() => voiceInput.isListening ? voiceInput.stop() : startManualListening()}
               disabled={!apiKey || isLoading}
               variant={voiceInput.isListening ? "destructive" : "outline"}
               size="icon"

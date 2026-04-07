@@ -281,7 +281,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
       } else if (earliest.type === "bold") {
         parts.push(
           <strong key={key++} className="font-semibold text-foreground">
-            {match[1]}
+            {renderInlineContent(match[1])}
           </strong>,
         )
         remaining = remaining.slice(index + match[0].length)

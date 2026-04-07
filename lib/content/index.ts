@@ -5,9 +5,10 @@ import { codingAiEraContent } from './coding-ai-era'
 import { codeThreeContent } from './code-three'
 import { buildingAgentsContent } from './building-agents'
 import { referencesContent } from './references'
+import { conclusionContent } from './conclusion'
 import type { DocsContentMap } from './types'
 
-export { raiseTheBarContent, aiNativeContent, codingAiEraContent, codeThreeContent, buildingAgentsContent, referencesContent }
+export { raiseTheBarContent, aiNativeContent, codingAiEraContent, codeThreeContent, buildingAgentsContent, referencesContent, conclusionContent }
 
 export const docsContent: DocsContentMap = {
   ...raiseTheBarContent,
@@ -16,6 +17,7 @@ export const docsContent: DocsContentMap = {
   ...codeThreeContent,
   ...buildingAgentsContent,
   ...referencesContent,
+  ...conclusionContent,
 }
 
 export function getAllDocSlugs(): string[] {

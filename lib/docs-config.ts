@@ -51,6 +51,12 @@ export const docsConfig: NavItem[] = [
       { title: "Reading List", href: "/docs/references/reading-list" },
     ],
   },
+  {
+    title: "Conclusion",
+    items: [
+      { title: "The Human Engineer", href: "/docs/conclusion/the-human-engineer" },
+    ],
+  },
 ]
 
 export function flattenNavItems(items: NavItem[], parentHref = ""): { title: string; href: string }[] {
