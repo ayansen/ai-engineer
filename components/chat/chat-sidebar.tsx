@@ -81,20 +81,23 @@ type SpeechRecognitionInstance = any
 
 function useVoiceInput(onTranscript: (text: string) => void) {
   const [isListening, setIsListening] = React.useState(false)
-  const [isSupported, setIsSupported] = React.useState(false)
-  const recognitionRef = React.useRef<SpeechRecognitionInstance>(null)
-  const wantListeningRef = React.useRef(false)
+  const [isSupported] = React.useState(() =>
+    typeof window !== "undefined" &&
+    !!(window.SpeechRecognition || (window as /* eslint-disable-line @typescript-eslint/no-explicit-any */ any).webkitSpeechRecognition),
+  )
   const callbackRef = React.useRef(onTranscript)
   callbackRef.current = onTranscript
 
-  // Create recognition instance once on mount
-  React.useEffect(() => {
+  // No useEffect — create a fresh instance each time start() is called
+  const recognitionRef = React.useRef<SpeechRecognitionInstance>(null)
+  const wantListeningRef = React.useRef(false)
+
+  const start = React.useCallback(() => {
+    if (!isSupported || wantListeningRef.current) return
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any
     const SpeechRecognition = w.SpeechRecognition || w.webkitSpeechRecognition
-    setIsSupported(!!SpeechRecognition)
-    if (!SpeechRecognition) return
-
     const recognition = new SpeechRecognition()
     recognition.continuous = true
     recognition.interimResults = true
@@ -106,44 +109,36 @@ function useVoiceInput(onTranscript: (text: string) => void) {
     }
 
     recognition.onerror = (event: SpeechRecognitionInstance) => {
-      // Only stop on fatal errors — ignore transient ones like no-speech
-      const fatal = ["not-allowed", "service-not-allowed", "network", "aborted"]
+      const fatal = ["not-allowed", "service-not-allowed", "network"]
       if (fatal.includes(event.error)) {
         wantListeningRef.current = false
         setIsListening(false)
+        recognitionRef.current = null
       }
+      // non-fatal (no-speech, audio-capture) — ignore, onend will auto-restart
     }
 
     recognition.onend = () => {
       if (wantListeningRef.current) {
-        // Browser stopped on its own — restart
         try { recognition.start() } catch { /* ignore */ }
       } else {
         setIsListening(false)
+        recognitionRef.current = null
       }
     }
 
     recognitionRef.current = recognition
-
-    return () => {
-      wantListeningRef.current = false
-      recognition.stop()
-    }
-  }, []) // no deps — create once
-
-  const start = React.useCallback(() => {
-    if (recognitionRef.current && !wantListeningRef.current) {
-      wantListeningRef.current = true
-      setIsListening(true)
-      try { recognitionRef.current.start() } catch { /* already running */ }
-    }
-  }, [])
+    wantListeningRef.current = true
+    setIsListening(true)
+    recognition.start()
+  }, [isSupported])
 
   const stop = React.useCallback(() => {
     wantListeningRef.current = false
     setIsListening(false)
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop() } catch { /* not running */ }
+      try { recognitionRef.current.abort() } catch { /* ignore */ }
+      recognitionRef.current = null
     }
   }, [])
 
