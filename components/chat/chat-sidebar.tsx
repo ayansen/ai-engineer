@@ -83,6 +83,7 @@ function useVoiceInput(onTranscript: (text: string) => void) {
   const [isListening, setIsListening] = React.useState(false)
   const [isSupported, setIsSupported] = React.useState(false)
   const recognitionRef = React.useRef<SpeechRecognitionInstance>(null)
+  const wantListeningRef = React.useRef(false)
 
   React.useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,39 +93,47 @@ function useVoiceInput(onTranscript: (text: string) => void) {
     if (!SpeechRecognition) return
 
     const recognition = new SpeechRecognition()
-    recognition.continuous = false
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = "en-US"
 
     recognition.onresult = (event: { results: { isFinal: boolean; 0: { transcript: string } }[] }) => {
       const last = event.results[event.results.length - 1]
-      if (last.isFinal) {
-        onTranscript(last[0].transcript)
-        setIsListening(false)
-      } else {
-        onTranscript(last[0].transcript)
-      }
+      onTranscript(last[0].transcript)
     }
 
-    recognition.onerror = () => setIsListening(false)
-    recognition.onend = () => setIsListening(false)
+    recognition.onerror = () => {
+      wantListeningRef.current = false
+      setIsListening(false)
+    }
+
+    // Auto-restart if user hasn't explicitly stopped
+    recognition.onend = () => {
+      if (wantListeningRef.current) {
+        try { recognition.start() } catch { /* already started */ }
+      } else {
+        setIsListening(false)
+      }
+    }
 
     recognitionRef.current = recognition
   }, [onTranscript])
 
   const start = React.useCallback(() => {
-    if (recognitionRef.current && !isListening) {
+    if (recognitionRef.current && !wantListeningRef.current) {
+      wantListeningRef.current = true
       recognitionRef.current.start()
       setIsListening(true)
     }
-  }, [isListening])
+  }, [])
 
   const stop = React.useCallback(() => {
-    if (recognitionRef.current && isListening) {
+    wantListeningRef.current = false
+    if (recognitionRef.current) {
       recognitionRef.current.stop()
-      setIsListening(false)
     }
-  }, [isListening])
+    setIsListening(false)
+  }, [])
 
   return { isListening, isSupported, start, stop }
 }
