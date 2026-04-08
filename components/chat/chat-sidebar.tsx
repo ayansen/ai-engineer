@@ -16,7 +16,7 @@ interface Message {
 }
 
 const STORAGE_KEY = "openrouter_api_key"
-const MODEL = "google/gemini-2.0-flash:free"
+const MODEL = "openrouter/free"
 
 const NAV_PAGES = flattenNavItems(docsConfig)
 
