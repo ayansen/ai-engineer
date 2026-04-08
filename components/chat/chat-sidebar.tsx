@@ -16,8 +16,7 @@ interface Message {
 }
 
 const STORAGE_KEY = "openrouter_api_key"
-const DEFAULT_API_KEY = "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"
-const MODEL = "openrouter/free"
+const MODEL = "google/gemini-2.0-flash-001"
 
 const NAV_PAGES = flattenNavItems(docsConfig)
 
@@ -495,11 +494,9 @@ export function ChatSidebar() {
   }, [doc])
 
   React.useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) || DEFAULT_API_KEY
+    const stored = localStorage.getItem(STORAGE_KEY) || ""
     setApiKey(stored)
-    if (!localStorage.getItem(STORAGE_KEY)) {
-      localStorage.setItem(STORAGE_KEY, DEFAULT_API_KEY)
-    }
+    if (!stored) setShowSettings(true)
     setAutoRead(localStorage.getItem(AUTO_READ_KEY) === "true")
     setVoiceMode(localStorage.getItem(VOICE_MODE_KEY) === "true")
   }, [])
